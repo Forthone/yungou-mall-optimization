@@ -1,0 +1,26 @@
+# Local configuration and secrets
+**/application-dev.yml
+**/application-prod.yml
+**/application-local.*
+**/.env.local
+**/.env.*.local
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+# Generated and machine-specific files
+**/target/
+**/node_modules/
+**/dist/
+**/.idea/
+**/.local/
+**/.agents/
+**/.claude/
+**/.codex/
+**/*.iml
+**/jars/
+**/logs/
+*.log
+
+**/.tmp/

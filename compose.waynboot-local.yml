@@ -1,0 +1,56 @@
+name: waynboot-learning
+
+# Windows 本地学习：Java 服务运行在宿主机，依赖运行在 Docker Linux 容器中。
+# 仅发布到本机回环地址；数据库 SQL 按教程手动导入。
+services:
+  mysql:
+    image: mysql:8.0.33
+    environment:
+      MYSQL_ROOT_PASSWORD: '@@123456Java'
+      MYSQL_DATABASE: wayn_shop
+    ports:
+      - "127.0.0.1:13306:3306"
+    command: ["--lower-case-table-names=1", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_general_ci"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./waynboot-mall/db-init:/sql:ro
+
+  redis:
+    image: redis:6.2.7
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+  rabbitmq:
+    image: rabbitmq:3.12.7-management
+    environment:
+      RABBITMQ_DEFAULT_USER: mall
+      RABBITMQ_DEFAULT_PASS: mall_local_password
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - ./waynboot-mall/rabbitmq/plugins/rabbitmq_delayed_message_exchange-3.12.0.ez:/plugins/rabbitmq_delayed_message_exchange-3.12.0.ez:ro
+      - ./waynboot-mall/rabbitmq/plugins/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+
+  elasticsearch:
+    # 仓库内 IK / 拼音插件为 7.14.0，必须与 ES 镜像匹配。
+    image: elasticsearch:7.14.0
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+      - ./waynboot-mall/es/plugins:/usr/share/elasticsearch/plugins:ro
+
+volumes:
+  mysql-data:
+  redis-data:
+  rabbitmq-data:
+  es-data:
