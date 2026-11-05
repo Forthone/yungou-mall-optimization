@@ -39,7 +39,8 @@ class OrderQuerySupportTest {
         RedisCache redisCache = mock(RedisCache.class);
         OrderMapper orderMapper = mock(OrderMapper.class);
         IOrderGoodsService orderGoodsService = mock(IOrderGoodsService.class);
-        OrderQuerySupport support = new OrderQuerySupport(redisCache, orderMapper, orderGoodsService);
+        OrderQuerySupport support = new OrderQuerySupport(redisCache, orderMapper, orderGoodsService,
+                mock(com.wayn.domain.api.outbox.mapper.LocalMessageMapper.class));
         Page<Order> page = new Page<>(1, 10);
         Page<Order> orderPage = new Page<>(1, 10);
         orderPage.setRecords(List.of(buildOrder()));

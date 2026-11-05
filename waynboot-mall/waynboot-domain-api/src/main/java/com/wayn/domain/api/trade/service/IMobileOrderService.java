@@ -1,5 +1,6 @@
 package com.wayn.domain.api.trade.service;
 
+import com.wayn.domain.api.trade.response.OrderSubmitResultResVO;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.wayn.domain.api.trade.entity.Order;
@@ -47,12 +48,13 @@ public interface IMobileOrderService extends IService<Order> {
     OrderListResVO selectListPage(IPage<Order> page, Integer showType, Long userId);
 
     /**
-     * 测试支付成功回调
+     * 查询当前用户的普通订单创建结果。
      *
      * @param orderSn 订单编号
-     * @return r
+     * @param userId 认证上下文中的用户 ID
+     * @return 创建结果，缓存缺失不等同于失败
      */
-    String searchResult(String orderSn);
+    OrderSubmitResultResVO searchResult(String orderSn, Long userId);
 
     /**
      * 订单退款

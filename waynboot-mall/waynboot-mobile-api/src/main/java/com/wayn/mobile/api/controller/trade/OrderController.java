@@ -1,6 +1,8 @@
 package com.wayn.mobile.api.controller.trade;
 
 
+import com.wayn.domain.api.trade.response.OrderSubmitResultResVO;
+
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wayn.common.base.controller.BaseController;
 import com.wayn.domain.api.trade.entity.Order;
@@ -103,15 +105,12 @@ public class OrderController extends BaseController {
      * @return R
      */
     @GetMapping("searchResult/{orderSn}")
-    public R<Boolean> searchResult(@PathVariable String orderSn) {
-        log.info("查询下单结果开始, userId={}, orderSn={}", MobileSecurityUtils.getUserId(), orderSn);
-        String result = iMobileOrderService.searchResult(orderSn);
-        if (!"success".equals(result)) {
-            log.warn("查询下单结果失败, userId={}, orderSn={}, result={}", MobileSecurityUtils.getUserId(), orderSn, result);
-            return R.error(ReturnCodeEnum.ORDER_SUBMIT_ERROR.getCode(), result);
-        }
-        log.info("查询下单结果完成, userId={}, orderSn={}", MobileSecurityUtils.getUserId(), orderSn);
-        return R.success();
+    public R<OrderSubmitResultResVO> searchResult(@PathVariable String orderSn) {
+        Long userId = MobileSecurityUtils.getUserId();
+        log.info("查询下单结果开始, userId={}, orderSn={}", userId, orderSn);
+        OrderSubmitResultResVO result = iMobileOrderService.searchResult(orderSn, userId);
+        log.info("查询下单结果完成, userId={}, orderSn={}, status={}", userId, orderSn, result.status());
+        return R.success(result);
     }
 
     /**

@@ -1,5 +1,17 @@
 package com.wayn.domain.trade.support.order;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.wayn.domain.api.outbox.entity.LocalMessage;
+import com.wayn.domain.api.outbox.mapper.LocalMessageMapper;
+import com.wayn.domain.api.outbox.enums.LocalMessageStatusEnum;
+import com.wayn.domain.api.outbox.service.LocalMessageTopics;
+import com.wayn.domain.api.trade.response.OrderSubmitResultResVO;
+import com.wayn.domain.api.trade.response.OrderSubmitResultResVO.Status;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import java.util.Objects;
+
 import cn.hutool.core.bean.BeanUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -30,12 +42,12 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static com.wayn.data.redis.constant.RedisKeyEnum.ORDER_RESULT_KEY;
-import static com.wayn.util.constant.SysConstants.ORDER_SUBMIT_ERROR_MSG;
 
 /**
  * 订单查询支撑服务。
  * 聚合订单列表、详情和提交结果查询，避免查询逻辑与写流程互相耦合。
  */
+@Slf4j
 @Service
 @AllArgsConstructor
 public class OrderQuerySupport {
@@ -43,6 +55,7 @@ public class OrderQuerySupport {
     private final RedisCache redisCache;
     private final OrderMapper orderMapper;
     private final IOrderGoodsService orderGoodsService;
+    private final LocalMessageMapper localMessageMapper;
 
     /**
      * 查询用户订单列表。
@@ -179,14 +192,66 @@ public class OrderQuerySupport {
     }
 
     /**
-     * 查询异步下单结果。
+     * 只读查询普通订单创建结果，不发消息、不改库存、不回写缓存。
+     * 数据库中的本人订单是成功依据；Outbox 只证明请求受理及归属，不能证明最终失败。
      *
      * @param orderSn 订单号
-     * @return 下单结果文本
+     * @param userId 认证上下文中的用户 ID，不能由前端指定
+     * @return 已创建、处理中或无法确认；不暴露其他用户的处理信息
      */
-    public String searchResult(String orderSn) {
-        // 下单结果由异步消费端写入 Redis，查询端只负责读取和兜底返回。
-        String value = redisCache.getCacheObject(ORDER_RESULT_KEY.getKey(orderSn));
-        return value == null ? ORDER_SUBMIT_ERROR_MSG : value;
+    public OrderSubmitResultResVO searchResult(String orderSn, Long userId) {
+        if (userId == null || StringUtils.isBlank(orderSn)) {
+            return unknownResult();
+        }
+        // 先查本人持久化订单，覆盖缓存过期、缓存异常、过期失败提示和支付后状态变化。
+        Order order = orderMapper.selectOne(Wrappers.lambdaQuery(Order.class)
+                .eq(Order::getOrderSn, orderSn)
+                .eq(Order::getUserId, userId));
+        if (order != null) {
+            return new OrderSubmitResultResVO(Status.SUCCESS, "订单已创建", order.getActualPrice());
+        }
+        LocalMessage message = localMessageMapper.selectOne(Wrappers.lambdaQuery(LocalMessage.class)
+                .eq(LocalMessage::getBizType, LocalMessageTopics.BIZ_TYPE_ORDER)
+                .eq(LocalMessage::getBizId, orderSn)
+                .eq(LocalMessage::getTopic, LocalMessageTopics.ORDER_SUBMIT));
+        // 没有订单时，必须先从服务端保存的消息参数核实归属，再读取按订单号存储的缓存。
+        if (!isSubmitMessageOwner(message, userId)) {
+            return unknownResult();
+        }
+        try {
+            String cached = redisCache.getCacheObject(ORDER_RESULT_KEY.getKey(orderSn));
+            // 回调异常仍可能重试，错误文本仅表示一次尝试失败，不将它当成不可逆终态。
+            if (StringUtils.isNotBlank(cached) && !"success".equals(cached)) {
+                return unknownResult();
+            }
+        } catch (RuntimeException e) {
+            log.warn("下单结果缓存不可用，使用持久记录判断, orderSn={}, userId={}", orderSn, userId);
+        }
+        if (Objects.equals(message.getStatus(), LocalMessageStatusEnum.INIT.getStatus())
+                || Objects.equals(message.getStatus(), LocalMessageStatusEnum.SENT.getStatus())) {
+            return new OrderSubmitResultResVO(Status.PROCESSING, "订单处理中，请稍候", null);
+        }
+        // 投递失败不能证明没有消费成功，也可能后续人工补偿，不提示用户立即重新下单。
+        return unknownResult();
+    }
+
+    /** 核对服务端持久消息中的用户；旧数据或损坏载荷一律按未知处理，日志不输出载荷。 */
+    private boolean isSubmitMessageOwner(LocalMessage message, Long userId) {
+        if (message == null || StringUtils.isBlank(message.getPayload())) {
+            return false;
+        }
+        try {
+            JSONObject body = JSON.parseObject(message.getPayload());
+            JSONObject submit = body == null ? null : body.getJSONObject("order");
+            return submit != null && Objects.equals(userId, submit.getLong("userId"));
+        } catch (RuntimeException e) {
+            log.warn("下单消息无法解析，返回未知结果, messageId={}", message.getId());
+            return false;
+        }
+    }
+
+    /** 未知、越权和缺失记录返回相同文案，避免泄露订单是否属于其他账号。 */
+    private OrderSubmitResultResVO unknownResult() {
+        return new OrderSubmitResultResVO(Status.UNKNOWN, "暂时无法确认下单结果，请稍后查看我的订单", null);
     }
 }

@@ -43,14 +43,14 @@ Set-Location ./waynboot-mobile
 npm.cmd run dev
 ```
 
-首次在新副本运行前需安装依赖。访问管理端 http://localhost:9530/admin/ ，商城 http://localhost:4949/mall/ 。
+首次在新环境运行前需安装依赖。访问管理端 http://localhost:9530/admin/ ，商城 http://localhost:4949/mall/ 。
 
 ## 优化记录
 
-当前仅建立源码基线，以下优化尚未实施：
+当前进度：
 
-1. 异步下单结果查询：用户归属校验、MySQL 成功兜底及明确查询状态。
-2. Outbox 与 RabbitMQ Confirm / Return / 超时重试闭环。
-3. 重复消费、支付与关单竞争、库存补偿的并发及故障验证。
+1. 已实现异步下单结果查询：用户归属校验、MySQL 成功兜底、处理中/成功/未知状态及有限轮询；单元测试和前端构建通过，真实页面联调待验证。
+2. 待实施：Outbox 与 RabbitMQ Confirm / Return / 超时重试闭环。
+3. 待实施：重复消费、支付与关单竞争、库存补偿的并发及故障验证。
 
 每次优化使用一个独立提交，记录问题、修改内容和实际验证结果，见 [CHANGELOG.md](CHANGELOG.md)。

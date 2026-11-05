@@ -89,7 +89,7 @@
         </span>
       </div>
 
-      <button type="button" class="confirm-submit__button" @click="onSubmit">
+      <button type="button" class="confirm-submit__button" :disabled="submitting" @click="onSubmit">
         提交订单
       </button>
     </div>
@@ -108,13 +108,14 @@
 </template>
 
 <script setup>
-import { computed, onActivated, reactive, toRefs, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, reactive, toRefs, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { closeToast, showLoadingToast, showToast } from 'vant'
 
 import { getCheckedGoods } from '@/api/cart'
 import { searchResult, submit } from '@/api/order'
 import { yuan } from '@/filter'
+import { ORDER_RESULT_UNKNOWN_MESSAGE, waitForOrderResult } from '../order-result-poll.mjs'
 
 const router = useRouter()
 const route = useRoute()
@@ -134,8 +135,7 @@ const state = reactive({
   orderSn: '',
   actualPrice: 0,
   freightPrice: 0,
-  retryCount: 60,
-  retryInterval: 300,
+  submitting: false,
   showPicker: false,
   couponColumns: [],
   couponSourceList: [],
@@ -151,8 +151,7 @@ const {
   orderSn,
   actualPrice,
   freightPrice,
-  retryCount,
-  retryInterval,
+  submitting,
   showPicker,
   couponColumns,
   couponSourceList,
@@ -259,35 +258,35 @@ const loadGoodsList = async () => {
   }
 }
 
-const pollOrderResult = async () => {
-  try {
-    await searchResult(orderSn.value)
-    closeToast()
+let pollController
+
+// KeepAlive 离开及普通卸载都终止轮询，避免旧请求返回后跳转页面。
+const cancelPolling = () => {
+  pollController?.abort()
+  closeToast()
+}
+onDeactivated(cancelPolling)
+onBeforeUnmount(cancelPolling)
+
+const pollOrderResult = async (submittedOrderSn, signal) => {
+  const result = await waitForOrderResult(() => searchResult(submittedOrderSn), { signal })
+  if (!result || signal.aborted) return
+  closeToast()
+  if (result.status === 'SUCCESS') {
     router.push({
       name: 'OrderPay',
       query: {
-        orderSn: orderSn.value,
-        actualPrice: actualPrice.value,
+        orderSn: submittedOrderSn,
+        actualPrice: result.actualPrice ?? actualPrice.value,
       },
     })
-  } catch (error) {
-    retryCount.value -= 1
-    if (retryCount.value <= 0) {
-      closeToast()
-      showToast({
-        type: 'fail',
-        message: error?.message || '下单失败，请稍后重试',
-      })
-      return
-    }
-
-    setTimeout(() => {
-      pollOrderResult()
-    }, retryInterval.value)
+    return
   }
+  showToast({ message: result.message || ORDER_RESULT_UNKNOWN_MESSAGE })
 }
 
 const onSubmit = async () => {
+  if (submitting.value) return
   const addressId = props.selectedAddress?.id
   if (!addressId) {
     showToast({
@@ -306,13 +305,14 @@ const onSubmit = async () => {
     return
   }
 
+  submitting.value = true
+  pollController = new AbortController()
+  const signal = pollController.signal
   showLoadingToast({
     duration: 0,
     forbidClick: true,
     message: '下单中，请稍后...',
   })
-
-  retryCount.value = 6
 
   try {
     const res = await submit({
@@ -325,15 +325,17 @@ const onSubmit = async () => {
     orderSn.value = res.data.orderSn
     actualPrice.value = res.data.actualPrice
 
-    setTimeout(() => {
-      pollOrderResult()
-    }, retryInterval.value)
+    if (!signal.aborted) await pollOrderResult(orderSn.value, signal)
   } catch (error) {
-    closeToast()
-    showToast({
-      type: 'fail',
-      message: error?.message || '下单失败，请稍后重试',
-    })
+    if (!signal.aborted) {
+      closeToast()
+      showToast({
+        type: 'fail',
+        message: error?.message || '暂时无法确认提交结果，请稍后查看我的订单',
+      })
+    }
+  } finally {
+    submitting.value = false
   }
 }
 

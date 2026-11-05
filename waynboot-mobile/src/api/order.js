@@ -12,9 +12,9 @@ export function orderDetail(orderSn) {
   return request({ url: `/order/detail/${orderSn}`, method: 'get' })
 }
 
-export function searchResult(orderId) {
+export function searchResult(orderSn) {
   return request({
-    url: `/order/searchResult/${orderId}`,
+    url: `/order/searchResult/${orderSn}`,
     method: 'get',
     params: { t: Date.now() }
   })

@@ -1,5 +1,6 @@
 package com.wayn.domain.trade.service.impl;
 
+import com.wayn.domain.api.trade.response.OrderSubmitResultResVO;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.wayn.domain.api.trade.entity.Order;
@@ -94,14 +95,15 @@ public class MobileOrderServiceImpl extends ServiceImpl<OrderMapper, Order> impl
     }
 
     /**
-     * 委托查询异步下单结果。
+     * 委托查询当前认证用户的异步下单结果。
      *
      * @param orderSn 订单号
+     * @param userId 认证上下文中的用户 ID
      * @return 下单结果
      */
     @Override
-    public String searchResult(String orderSn) {
-        return orderQuerySupport.searchResult(orderSn);
+    public OrderSubmitResultResVO searchResult(String orderSn, Long userId) {
+        return orderQuerySupport.searchResult(orderSn, userId);
     }
 
     /**
